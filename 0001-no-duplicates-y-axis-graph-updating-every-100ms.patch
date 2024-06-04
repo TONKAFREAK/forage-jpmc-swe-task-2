@@ -1,0 +1,241 @@
+From d8b3549bdcca04ed90ea3d4785d07acd5985576f Mon Sep 17 00:00:00 2001
+From: TONKAFREAK <soloyjon27@gmail.com>
+Date: Wed, 5 Jun 2024 00:17:15 +0500
+Subject: [PATCH]  no duplicates, y-axis graph updating every 100ms
+
+---
+ package-lock.json | 19 ++++++++++++-------
+ package.json      |  8 ++++++--
+ src/App.tsx       | 26 ++++++++++++++++++++------
+ src/Graph.tsx     | 39 ++++++++++++++++++++++++++++++++-------
+ 4 files changed, 70 insertions(+), 22 deletions(-)
+
+diff --git a/package-lock.json b/package-lock.json
+index 21b4315..573dd2f 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -7,6 +7,7 @@
+     "": {
+       "name": "bank-merge-co-task-2",
+       "version": "0.1.0",
++      "license": "ISC",
+       "dependencies": {
+         "@finos/perspective": "^1.6.2",
+         "@finos/perspective-viewer": "^1.6.2",
+@@ -18,7 +19,7 @@
+         "@types/react-dom": "^16.0.11",
+         "bootstrap": "^4.2.1",
+         "puppeteer": "^1.19.0",
+-        "react": "^16.9.0",
++        "react": "^16.14.0",
+         "react-dom": "^16.9.0",
+         "react-scripts": "2.1.3"
+       },
+@@ -4392,9 +4393,9 @@
+       }
+     },
+     "node_modules/caniuse-lite": {
+-      "version": "1.0.30001373",
+-      "resolved": "https://registry.npmjs.org/caniuse-lite/-/caniuse-lite-1.0.30001373.tgz",
+-      "integrity": "sha512-pJYArGHrPp3TUqQzFYRmP/lwJlj8RCbVe3Gd3eJQkAV8SAC6b19XS9BjMvRdvaS8RMkaTN8ZhoHP6S1y8zzwEQ==",
++      "version": "1.0.30001627",
++      "resolved": "https://registry.npmjs.org/caniuse-lite/-/caniuse-lite-1.0.30001627.tgz",
++      "integrity": "sha512-4zgNiB8nTyV/tHhwZrFs88ryjls/lHiqFhrxCW4qSTeuRByBVnPYpDInchOIySWknznucaf31Z4KYqjfbrecVw==",
+       "funding": [
+         {
+           "type": "opencollective",
+@@ -4403,6 +4404,10 @@
+         {
+           "type": "tidelift",
+           "url": "https://tidelift.com/funding/github/npm/caniuse-lite"
++        },
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/ai"
+         }
+       ]
+     },
+@@ -23678,9 +23683,9 @@
+       }
+     },
+     "caniuse-lite": {
+-      "version": "1.0.30001373",
+-      "resolved": "https://registry.npmjs.org/caniuse-lite/-/caniuse-lite-1.0.30001373.tgz",
+-      "integrity": "sha512-pJYArGHrPp3TUqQzFYRmP/lwJlj8RCbVe3Gd3eJQkAV8SAC6b19XS9BjMvRdvaS8RMkaTN8ZhoHP6S1y8zzwEQ=="
++      "version": "1.0.30001627",
++      "resolved": "https://registry.npmjs.org/caniuse-lite/-/caniuse-lite-1.0.30001627.tgz",
++      "integrity": "sha512-4zgNiB8nTyV/tHhwZrFs88ryjls/lHiqFhrxCW4qSTeuRByBVnPYpDInchOIySWknznucaf31Z4KYqjfbrecVw=="
+     },
+     "capture-exit": {
+       "version": "1.2.0",
+diff --git a/package.json b/package.json
+index ca234e9..98df1df 100644
+--- a/package.json
++++ b/package.json
+@@ -13,7 +13,7 @@
+     "@types/react-dom": "^16.0.11",
+     "bootstrap": "^4.2.1",
+     "puppeteer": "^1.19.0",
+-    "react": "^16.9.0",
++    "react": "^16.14.0",
+     "react-dom": "^16.9.0",
+     "react-scripts": "2.1.3"
+   },
+@@ -36,5 +36,9 @@
+     "awesome-typescript-loader": "^5.2.1",
+     "source-map-loader": "^0.2.4",
+     "typescript": "^3.2.4"
+-  }
++  },
++  "description": "Starter repo for task 2 of JPMC's Forage program",
++  "main": "index.js",
++  "author": "",
++  "license": "ISC"
+ }
+diff --git a/src/App.tsx b/src/App.tsx
+index 0728518..78be654 100755
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -8,6 +8,8 @@ import './App.css';
+  */
+ interface IState {
+   data: ServerRespond[],
++  intervalId?: NodeJS.Timeout,
++  showGraph: boolean,
+ }
+ 
+ /**
+@@ -22,6 +24,8 @@ class App extends Component<{}, IState> {
+       // data saves the server responds.
+       // We use this state to parse data down to the child element (Graph) as element property
+       data: [],
++      showGraph: false,
++      
+     };
+   }
+ 
+@@ -29,18 +33,28 @@ class App extends Component<{}, IState> {
+    * Render Graph react component with state.data parse as property data
+    */
+   renderGraph() {
+-    return (<Graph data={this.state.data}/>)
++    if (this.state.showGraph) return (<Graph data={this.state.data}/>)
+   }
+ 
+   /**
+    * Get new data from server and update the state with the new data
+    */
+   getDataFromServer() {
+-    DataStreamer.getData((serverResponds: ServerRespond[]) => {
+-      // Update the state by creating a new array of data that consists of
+-      // Previous data in the state and the new data from server
+-      this.setState({ data: [...this.state.data, ...serverResponds] });
+-    });
++    const intervalId = setInterval(() => {
++      DataStreamer.getData((serverResponds: ServerRespond[]) => {
++        this.setState({ data: serverResponds, showGraph: true});
++      });
++    }, 100); //100 ms
++    this.setState({ intervalId });
++  }
++
++  /**
++   * Clear the interval when the component unmounts
++   */
++  componentWillUnmount() {
++    if (this.state.intervalId) {
++      clearInterval(this.state.intervalId);
++    }
+   }
+ 
+   /**
+diff --git a/src/Graph.tsx b/src/Graph.tsx
+index 3b2a7da..3f33a3c 100644
+--- a/src/Graph.tsx
++++ b/src/Graph.tsx
+@@ -14,7 +14,7 @@ interface IProps {
+  * Perspective library adds load to HTMLElement prototype.
+  * This interface acts as a wrapper for Typescript compiler.
+  */
+-interface PerspectiveViewerElement {
++interface PerspectiveViewerElement extends HTMLElement {
+   load: (table: Table) => void,
+ }
+ 
+@@ -25,6 +25,13 @@ interface PerspectiveViewerElement {
+ class Graph extends Component<IProps, {}> {
+   // Perspective table
+   table: Table | undefined;
++  // To keep track of inserted data
++  insertedData: Set<string>;
++
++  constructor(props: IProps) {
++    super(props);
++    this.insertedData = new Set();
++  }
+ 
+   render() {
+     return React.createElement('perspective-viewer');
+@@ -32,7 +39,7 @@ class Graph extends Component<IProps, {}> {
+ 
+   componentDidMount() {
+     // Get element to attach the table from the DOM.
+-    const elem: PerspectiveViewerElement = document.getElementsByTagName('perspective-viewer')[0] as unknown as PerspectiveViewerElement;
++    const elem = document.getElementsByTagName('perspective-viewer')[0] as unknown as PerspectiveViewerElement;
+ 
+     const schema = {
+       stock: 'string',
+@@ -46,6 +53,16 @@ class Graph extends Component<IProps, {}> {
+     }
+     if (this.table) {
+       // Load the `table` in the `<perspective-viewer>` DOM reference.
++      elem.setAttribute('view', 'y_line');
++      elem.setAttribute('column-pivots', '["stock"]');
++      elem.setAttribute('row-pivots', '["timestamp"]');
++      elem.setAttribute('columns', '["top_ask_price"]');
++      elem.setAttribute('aggregates', JSON.stringify({
++        stock: 'distinct count',
++        top_ask_price: 'avg',
++        top_bid_price: 'avg',
++        timestamp: 'distinct count',
++      }));
+ 
+       // Add more Perspective configurations here.
+       elem.load(this.table);
+@@ -55,9 +72,15 @@ class Graph extends Component<IProps, {}> {
+   componentDidUpdate() {
+     // Everytime the data props is updated, insert the data into Perspective table
+     if (this.table) {
+-      // As part of the task, you need to fix the way we update the data props to
+-      // avoid inserting duplicated entries into Perspective table again.
+-      this.table.update(this.props.data.map((el: any) => {
++      // Filter out duplicate entries
++      const newData = this.props.data.filter((el: any) => {
++        const key = `${el.stock}-${el.timestamp}`;
++        if (!this.insertedData.has(key)) {
++          this.insertedData.add(key);
++          return true;
++        }
++        return false;
++      }).map((el: any) => {
+         // Format the data from ServerRespond to the schema
+         return {
+           stock: el.stock,
+@@ -65,9 +88,11 @@ class Graph extends Component<IProps, {}> {
+           top_bid_price: el.top_bid && el.top_bid.price || 0,
+           timestamp: el.timestamp,
+         };
+-      }));
++      });
++
++      this.table.update(newData);
+     }
+   }
+ }
+ 
+-export default Graph;
++export default Graph;
+\ No newline at end of file
+-- 
+2.45.1.windows.1
+
